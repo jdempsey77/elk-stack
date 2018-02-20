@@ -1,0 +1,107 @@
+---
+version: '3'
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:${TAG}
+    container_name: elasticsearch
+    environment: 
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+#    volumes:
+#        - /nfs/store/elasticsearch/data:/usr/share/elasticsearch/data
+    ports:
+        - "9200:9200"
+        - "9300:9300"
+  kibana:
+    image: docker.elastic.co/kibana/kibana-oss:${TAG}
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_USERNAME=kibana
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+    volumes:
+      - ./config/kibana:/usr/share/kibana/config:ro
+    ports: 
+      - "5601:5601"
+    depends_on: ['elasticsearch']
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash-oss:${TAG}
+    container_name: logstash
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    volumes:
+      - ./config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    depends_on: ['elasticsearch', 'setup_logstash']
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:${TAG}
+    container_name: filebeat
+    privileged: true
+    command: -e -E 'output.elasticsearch.password=${ELASTIC_PASSWORD}'
+    volumes:
+      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./config/filebeat/prospectors.d/default.yml:/usr/share/filebeat/prospectors.d/default.yml
+      - /var/log:/mnt/log:ro
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    depends_on: ['elasticsearch', 'setup_filebeat']
+
+  heartbeat:
+    image: docker.elastic.co/beats/heartbeat:${TAG}
+    container_name: heartbeat
+    command: -e -E 'output.elasticsearch.password=${ELASTIC_PASSWORD}'
+    volumes:
+      - ./config/heartbeat/heartbeat.yml:/usr/share/heartbeat/heartbeat.yml:ro
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    depends_on: ['elasticsearch', 'setup_heartbeat']
+
+  metricbeat:
+    image: docker.elastic.co/beats/metricbeat:${TAG}
+    container_name: metricbeat
+    command: -e -E 'output.elasticsearch.password=${ELASTIC_PASSWORD}'
+    volumes:
+      - ./config/metricbeat/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    depends_on: ['elasticsearch', 'setup_metricbeat']
+
+  setup_logstash:
+    image: centos:7
+    container_name: setup_logstash
+    volumes: ['./scripts/setup-logstash.sh:/usr/local/bin/setup-logstash.sh:ro']
+    command: ['/bin/bash', '-c', 'cat /usr/local/bin/setup-logstash.sh | tr -d "\r" | bash']
+    environment: ['ELASTIC_PASSWORD=${ELASTIC_PASSWORD}']
+    depends_on: ['elasticsearch']
+
+  setup_kibana:
+    image: centos:7
+    container_name: setup_kibana
+    volumes: ['./scripts/setup-kibana.sh:/usr/local/bin/setup-kibana.sh:ro']
+    command: ['/bin/bash', '-c', 'cat /usr/local/bin/setup-kibana.sh | tr -d "\r" | bash']
+    environment: ['ELASTIC_PASSWORD=${ELASTIC_PASSWORD}']
+    depends_on: ['elasticsearch']
+
+  setup_filebeat:
+    image: docker.elastic.co/beats/filebeat:${TAG}
+    container_name: setup_filebeat
+    volumes: ['./scripts/setup-beat.sh:/usr/local/bin/setup-beat.sh:ro']
+    command: ['/bin/bash', '-c', 'cat /usr/local/bin/setup-beat.sh | tr -d "\r" | bash -s filebeat']
+    environment: ['ELASTIC_PASSWORD=${ELASTIC_PASSWORD}']
+    depends_on: ['kibana']
+
+  setup_heartbeat:
+    image: docker.elastic.co/beats/heartbeat:${TAG}
+    container_name: setup_heartbeat
+    volumes: ['./scripts/setup-beat.sh:/usr/local/bin/setup-beat.sh:ro']
+    command: ['/bin/bash', '-c', 'cat /usr/local/bin/setup-beat.sh | tr -d "\r" | bash -s heartbeat']
+    environment: ['ELASTIC_PASSWORD=${ELASTIC_PASSWORD}']
+    depends_on: ['kibana']
+
+  setup_metricbeat:
+    image: docker.elastic.co/beats/metricbeat:${TAG}
+    container_name: setup_metricbeat
+    volumes: ['./scripts/setup-beat.sh:/usr/local/bin/setup-beat.sh:ro']
+    command: ['/bin/bash', '-c', 'cat /usr/local/bin/setup-beat.sh | tr -d "\r" | bash -s metricbeat']
+    environment: ['ELASTIC_PASSWORD=${ELASTIC_PASSWORD}']
+    depends_on: ['kibana']
+
